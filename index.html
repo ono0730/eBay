@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>eBay価格計算機 - モバイル即決設定ツール</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            ebay: {
+              blue: '#0064D2',
+              red: '#E53238',
+              yellow: '#F5AF02',
+              green: '#86B817'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    * {
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    input[type=number] {
+      -moz-appearance: textfield;
+    }
+    .safe-bottom {
+      padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans antialiased min-h-screen pb-36">
+
+  <!-- ヘッダー -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
+    <div class="max-w-md mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <div class="flex font-black text-xl tracking-tight">
+          <span class="text-ebay-red">e</span>
+          <span class="text-ebay-blue">b</span>
+          <span class="text-ebay-yellow">a</span>
+          <span class="text-ebay-green">y</span>
+        </div>
+        <span class="text-xs bg-blue-50 text-blue-700 font-semibold px-2 py-0.5 rounded-full">価格逆算機 (精密版)</span>
+      </div>
+      <button onclick="resetDefaults()" class="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1 py-1 px-2 rounded bg-slate-100 active:bg-slate-200">
+        <i class="fa-solid fa-arrow-rotate-left"></i> 初期化
+      </button>
+    </div>
+  </header>
+
+  <main class="max-w-md mx-auto px-4 pt-4 space-y-4">
+
+    <!-- 配送手段トグル -->
+    <div class="bg-white p-3.5 rounded-2xl shadow-sm border border-slate-200/80">
+      <div class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+        <i class="fa-solid fa-truck-fast text-ebay-blue"></i>
+        <span>配送手段 (デフォルト: 配送代行)</span>
+      </div>
+      
+      <div class="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-xl">
+        <button id="mode-agency" onclick="switchShippingMode('agency')"
+          class="flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-bold transition-all bg-white text-ebay-blue shadow-sm border border-slate-200/60">
+          <i class="fa-solid fa-warehouse"></i> 配送代行利用
+        </button>
+        <button id="mode-self" onclick="switchShippingMode('self')"
+          class="flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-bold transition-all text-slate-600 hover:text-slate-800">
+          <i class="fa-solid fa-box-open"></i> 自己送付
+        </button>
+      </div>
+
+      <div class="mt-2.5 text-[11px] text-slate-500 flex items-center gap-1.5 bg-blue-50/70 p-2 rounded-lg" id="mode-desc">
+        <i class="fa-solid fa-circle-info text-ebay-blue text-xs"></i>
+        <span>代行倉庫への手数料・転送料を含めて算出します</span>
+      </div>
+    </div>
+
+    <!-- 原価 & 利益率 & 消費税還付 -->
+    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200/80 space-y-4">
+      <div class="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+        <i class="fa-solid fa-tags text-ebay-blue"></i>
+        <span>仕入れ原価 & 目標利益</span>
+      </div>
+
+      <!-- 仕入値 -->
+      <div>
+        <div class="flex justify-between items-center mb-1">
+          <label for="costPrice" class="text-xs font-bold text-slate-700">商品仕入れ値 (原価)</label>
+          <span class="text-[11px] text-slate-400">税込 / JPY</span>
+        </div>
+        <div class="relative flex items-center">
+          <span class="absolute left-3.5 text-slate-400 font-bold text-base">¥</span>
+          <input type="number" id="costPrice" inputmode="numeric" value="3500" oninput="calculate()"
+            class="w-full pl-8 pr-20 py-3 bg-slate-50 border border-slate-200 rounded-xl text-lg font-bold text-slate-800 focus:bg-white focus:border-ebay-blue focus:ring-2 focus:ring-blue-100 outline-none transition-all">
+          <div class="absolute right-1.5 flex gap-1">
+            <button onclick="adjustValue('costPrice', -500)" class="w-8 h-8 rounded-lg bg-slate-200/70 text-slate-600 active:bg-slate-300 flex items-center justify-center font-bold text-sm">-</button>
+            <button onclick="adjustValue('costPrice', 500)" class="w-8 h-8 rounded-lg bg-slate-200/70 text-slate-600 active:bg-slate-300 flex items-center justify-center font-bold text-sm">+</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 消費税還付トグル（輸出免税） -->
+      <div class="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-100">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-receipt text-slate-500 text-xs"></i>
+          <div>
+            <div class="text-xs font-bold text-slate-700">消費税還付 (輸出免税 10%)</div>
+            <div class="text-[10px] text-slate-400">課税事業者の場合、仕入の消費税が戻ります</div>
+          </div>
+        </div>
+        <label class="relative inline-flex items-center cursor-pointer">
+          <input type="checkbox" id="taxRefundToggle" onchange="calculate()" class="sr-only peer">
+          <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+        </label>
+      </div>
+
+      <!-- 目標利益率 (デフォルト: 30%) -->
+      <div>
+        <div class="flex justify-between items-center mb-1">
+          <label for="profitMargin" class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+            目標利益率
+            <span class="bg-emerald-100 text-emerald-800 font-bold text-[10px] px-1.5 py-0.5 rounded">デフォルト 30%</span>
+          </label>
+          <span class="text-xs font-extrabold text-emerald-600" id="marginDisplay">30%</span>
+        </div>
+        <div class="relative flex items-center">
+          <input type="range" id="profitMargin" min="5" max="60" step="1" value="30" oninput="updateMarginInput(this.value)"
+            class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600">
+        </div>
+        <div class="flex justify-between text-[10px] text-slate-400 mt-1">
+          <span>薄利 (10%)</span>
+          <span>標準 (25-30%)</span>
+          <span>高利益 (45%+)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 配送費 & 関税設定 -->
+    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200/80 space-y-3">
+      <div class="flex justify-between items-center">
+        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+          <i class="fa-solid fa-plane-departure text-ebay-blue"></i>
+          <span id="shippingGroupTitle">代行送料 & 手数料</span>
+        </span>
+        <div class="flex gap-1">
+          <button onclick="applyShippingPreset(1800, 450)" class="text-[10px] px-2 py-0.5 bg-slate-100 rounded text-slate-600 active:bg-slate-200 font-medium">軽量(~250g)</button>
+          <button onclick="applyShippingPreset(2600, 500)" class="text-[10px] px-2 py-0.5 bg-slate-100 rounded text-slate-600 active:bg-slate-200 font-medium">中型(~1kg)</button>
+        </div>
+      </div>
+
+      <!-- 国際送料入力 -->
+      <div>
+        <div class="flex justify-between items-center mb-1">
+          <label for="intlShipping" id="labelIntlShipping" class="text-xs font-semibold text-slate-700">代行経由 国際配送料</label>
+          <span class="text-[11px] text-slate-400">JPY</span>
+        </div>
+        <div class="relative flex items-center">
+          <span class="absolute left-3.5 text-slate-400 font-bold text-sm">¥</span>
+          <input type="number" id="intlShipping" inputmode="numeric" value="2300" oninput="calculate()"
+            class="w-full pl-8 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base font-bold text-slate-800 focus:bg-white focus:border-ebay-blue outline-none">
+        </div>
+      </div>
+
+      <!-- 代行手数料 / 資材梱包費 -->
+      <div id="extraFeeWrapper">
+        <div class="flex justify-between items-center mb-1">
+          <label for="extraFee" id="labelExtraFee" class="text-xs font-semibold text-slate-700">代行作業料・出荷手数料</label>
+          <span class="text-[11px] text-slate-400">JPY</span>
+        </div>
+        <div class="relative flex items-center">
+          <span class="absolute left-3.5 text-slate-400 font-bold text-sm">¥</span>
+          <input type="number" id="extraFee" inputmode="numeric" value="450" oninput="calculate()"
+            class="w-full pl-8 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base font-bold text-slate-800 focus:bg-white focus:border-ebay-blue outline-none">
+        </div>
+      </div>
+
+      <!-- 関税負担 (DDP元払い時のみ) -->
+      <div>
+        <div class="flex justify-between items-center mb-1">
+          <label for="customsDuty" class="text-xs font-semibold text-slate-700 flex items-center gap-1">
+            関税・DDP元払い負担
+            <span class="text-[10px] text-slate-400 font-normal">(原則$800まで不要・通常¥0)</span>
+          </label>
+          <span class="text-[11px] text-slate-400">JPY</span>
+        </div>
+        <div class="relative flex items-center">
+          <span class="absolute left-3.5 text-slate-400 font-bold text-sm">¥</span>
+          <input type="number" id="customsDuty" inputmode="numeric" value="0" oninput="calculate()"
+            class="w-full pl-8 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base font-bold text-slate-800 focus:bg-white focus:border-ebay-blue outline-none">
+        </div>
+      </div>
+    </div>
+
+    <!-- 詳細設定（為替レート・米国Sales Tax影響・eBay手数料内訳） -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
+      <button onclick="toggleDetails()" class="w-full px-4 py-3 flex items-center justify-between text-xs font-bold text-slate-600 hover:bg-slate-50">
+        <span class="flex items-center gap-1.5">
+          <i class="fa-solid fa-sliders text-slate-400"></i>
+          為替レート & 手数料・税制の精密設定
+        </span>
+        <i id="accordionIcon" class="fa-solid fa-chevron-down text-slate-400 transition-transform"></i>
+      </button>
+      
+      <div id="advancedSettings" class="hidden px-4 pb-4 pt-2 border-t border-slate-100 space-y-3">
+        <!-- 米国Sales Tax補正トグル (重要) -->
+        <div class="p-2.5 bg-amber-50/70 border border-amber-200/60 rounded-xl flex items-center justify-between">
+          <div class="pr-2">
+            <div class="text-xs font-bold text-amber-900 flex items-center gap-1">
+              <i class="fa-solid fa-triangle-exclamation text-amber-600"></i>
+              米国Sales Tax分への手数料課税を補正
+            </div>
+            <div class="text-[10px] text-amber-700 leading-tight mt-0.5">
+              eBayはバイヤーが払う州税(~7%)を含む総額に落札手数料を課すため、実効手数料が約0.9%上がります
+            </div>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer shrink-0">
+            <input type="checkbox" id="salesTaxCompToggle" checked onchange="calculate()" class="sr-only peer">
+            <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600"></div>
+          </label>
+        </div>
+
+        <!-- 為替レート & 注文固定費 -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label for="exchangeRate" class="text-[11px] font-bold text-slate-600 block mb-1">為替レート (USD/JPY)</label>
+            <div class="relative flex items-center">
+              <span class="absolute left-3 text-slate-400 text-xs">¥</span>
+              <input type="number" id="exchangeRate" value="152.0" step="0.5" oninput="calculate()"
+                class="w-full pl-7 pr-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold outline-none focus:border-ebay-blue">
+            </div>
+          </div>
+          <div>
+            <label for="perOrderFeeUsd" class="text-[11px] font-bold text-slate-600 block mb-1">注文固定費 (Per-order)</label>
+            <div class="relative flex items-center">
+              <span class="absolute left-3 text-slate-400 text-xs">$</span>
+              <input type="number" id="perOrderFeeUsd" value="0.40" step="0.05" oninput="calculate()"
+                class="w-full pl-6 pr-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold outline-none focus:border-ebay-blue">
+            </div>
+          </div>
+        </div>
+
+        <!-- 落札手数料 & 広告(PLS) -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label for="ebayCategoryFee" class="text-[11px] font-bold text-slate-600 block mb-1">eBay落札手数料</label>
+            <div class="relative flex items-center">
+              <input type="number" id="ebayCategoryFee" value="13.25" step="0.05" oninput="calculate()"
+                class="w-full pl-2 pr-7 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold outline-none focus:border-ebay-blue text-right">
+              <span class="absolute right-2.5 text-slate-400 text-xs">%</span>
+            </div>
+          </div>
+          <div>
+            <label for="promotedAdFee" class="text-[11px] font-bold text-slate-600 block mb-1">広告費 (PLS / 任意)</label>
+            <div class="relative flex items-center">
+              <input type="number" id="promotedAdFee" value="2.0" step="0.5" oninput="calculate()"
+                class="w-full pl-2 pr-7 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold outline-none focus:border-ebay-blue text-right">
+              <span class="absolute right-2.5 text-slate-400 text-xs">%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 国際決済手数料 & Payoneer手数料 -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label for="intlFee" class="text-[11px] font-bold text-slate-600 block mb-1">海外取引手数料</label>
+            <div class="relative flex items-center">
+              <input type="number" id="intlFee" value="1.35" step="0.05" oninput="calculate()"
+                class="w-full pl-2 pr-7 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold outline-none focus:border-ebay-blue text-right">
+              <span class="absolute right-2.5 text-slate-400 text-xs">%</span>
+            </div>
+          </div>
+          <div>
+            <label for="payoneerFee" class="text-[11px] font-bold text-slate-600 block mb-1">Payoneer為替手数料</label>
+            <div class="relative flex items-center">
+              <input type="number" id="payoneerFee" value="2.00" step="0.1" oninput="calculate()"
+                class="w-full pl-2 pr-7 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold outline-none focus:border-ebay-blue text-right">
+              <span class="absolute right-2.5 text-slate-400 text-xs">%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 収支・コスト内訳 -->
+    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200/80 space-y-2">
+      <div class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">収支・コスト内訳</div>
+      <div class="flex justify-between text-xs py-1 border-b border-slate-100">
+        <span class="text-slate-500">原価・配送費・資材計</span>
+        <span class="font-semibold text-slate-800" id="detailCost">¥0</span>
+      </div>
+      <div class="flex justify-between text-xs py-1 border-b border-slate-100">
+        <span class="text-slate-500">eBay・決済・広告手数料 合計</span>
+        <span class="font-semibold text-slate-800" id="detailFees">¥0</span>
+      </div>
+      <div class="flex justify-between text-xs py-1 border-b border-slate-100" id="taxRefundRow" style="display: none;">
+        <span class="text-emerald-600 font-medium">消費税還付見込 (10%)</span>
+        <span class="font-bold text-emerald-600" id="detailTaxRefund">+¥0</span>
+      </div>
+      <div class="flex justify-between text-xs py-1 border-b border-slate-100">
+        <span class="text-slate-500">損益分岐 売価 (Break-even)</span>
+        <span class="font-semibold text-amber-600" id="breakEvenPrice">$0.00</span>
+      </div>
+      <div class="flex justify-between text-xs pt-1">
+        <span class="text-slate-500 font-medium">日本円 売上換算</span>
+        <span class="font-bold text-slate-800" id="salesJpyTotal">¥0</span>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- フッター固定結果バー -->
+  <div class="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-2xl z-40 safe-bottom">
+    <div class="max-w-md mx-auto px-4 py-2.5">
+      <div class="flex items-center justify-between gap-3">
+        <!-- 推奨出品価格 -->
+        <div class="flex-1">
+          <div class="flex items-center gap-1.5">
+            <span class="text-[11px] font-bold text-slate-500">推奨出品価格 (.99)</span>
+            <span class="text-[9px] bg-blue-100 text-blue-800 px-1 py-0.2 rounded font-semibold">Free Shipping</span>
+          </div>
+          <div class="flex items-baseline gap-1.5">
+            <span class="text-2xl font-black text-ebay-blue tracking-tight" id="displayUsdPrice">$0.00</span>
+            <button onclick="copyPrice()" class="text-xs text-slate-400 hover:text-ebay-blue active:scale-95 p-1" title="価格をコピー">
+              <i class="fa-regular fa-copy"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- 予想純利益 & 利益率 -->
+        <div class="text-right pl-3 border-l border-slate-200">
+          <div class="text-[11px] font-bold text-slate-500">見込純利益 (手残り)</div>
+          <div class="text-xl font-extrabold text-emerald-600 flex items-center justify-end gap-1">
+            <span id="displayNetProfit">¥0</span>
+          </div>
+          <div class="text-[10px] text-slate-500 font-medium">
+            実質利益率: <span class="font-bold text-emerald-700" id="displayActualMargin">0%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- コピー通知トースト -->
+  <div id="toast" class="fixed top-5 left-1/2 -translate-x-1/2 bg-slate-900/90 text-white text-xs px-4 py-2 rounded-full shadow-lg opacity-0 transition-opacity pointer-events-none z-50 flex items-center gap-1.5">
+    <i class="fa-solid fa-check text-emerald-400"></i>
+    <span>価格をクリップボードにコピーしました</span>
+  </div>
+
+  <script>
+    let shippingMode = 'agency';
+
+    function switchShippingMode(mode) {
+      shippingMode = mode;
+      const btnAgency = document.getElementById('mode-agency');
+      const btnSelf = document.getElementById('mode-self');
+      const titleGroup = document.getElementById('shippingGroupTitle');
+      const labelIntl = document.getElementById('labelIntlShipping');
+      const labelExtra = document.getElementById('labelExtraFee');
+      const extraFeeInput = document.getElementById('extraFee');
+      const intlInput = document.getElementById('intlShipping');
+      const desc = document.getElementById('mode-desc');
+
+      if (mode === 'agency') {
+        btnAgency.className = "flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-bold transition-all bg-white text-ebay-blue shadow-sm border border-slate-200/60";
+        btnSelf.className = "flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-bold transition-all text-slate-600 hover:text-slate-800";
+        
+        titleGroup.innerText = "代行送料 & 手数料";
+        labelIntl.innerText = "代行経由 国際配送料";
+        labelExtra.innerText = "代行作業料・出荷手数料";
+        extraFeeInput.value = 450;
+        intlInput.value = 2300;
+        desc.innerHTML = `<i class="fa-solid fa-circle-info text-ebay-blue text-xs"></i><span>代行倉庫への手数料・転送料を含めて算出します</span>`;
+      } else {
+        btnSelf.className = "flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-bold transition-all bg-white text-ebay-blue shadow-sm border border-slate-200/60";
+        btnAgency.className = "flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-bold transition-all text-slate-600 hover:text-slate-800";
+        
+        titleGroup.innerText = "自己発送 送料 & 梱包費";
+        labelIntl.innerText = "自己送付 国際配送料 (FedEx/DHL/郵便)";
+        labelExtra.innerText = "国内梱包資材費・ラベル紙代";
+        extraFeeInput.value = 150;
+        intlInput.value = 2600;
+        desc.innerHTML = `<i class="fa-solid fa-circle-info text-slate-600 text-xs"></i><span>自宅・自社からの直接出荷として梱包資材費で計算します</span>`;
+      }
+      calculate();
+    }
+
+    function updateMarginInput(val) {
+      document.getElementById('marginDisplay').innerText = `${val}%`;
+      calculate();
+    }
+
+    function adjustValue(id, amount) {
+      const input = document.getElementById(id);
+      const current = parseFloat(input.value) || 0;
+      input.value = Math.max(0, current + amount);
+      calculate();
+    }
+
+    function applyShippingPreset(shippingCost, extraCost) {
+      document.getElementById('intlShipping').value = shippingCost;
+      document.getElementById('extraFee').value = extraCost;
+      calculate();
+    }
+
+    function toggleDetails() {
+      const adv = document.getElementById('advancedSettings');
+      const icon = document.getElementById('accordionIcon');
+      if (adv.classList.contains('hidden')) {
+        adv.classList.remove('hidden');
+        icon.classList.add('rotate-180');
+      } else {
+        adv.classList.add('hidden');
+        icon.classList.remove('rotate-180');
+      }
+    }
+
+    function resetDefaults() {
+      document.getElementById('costPrice').value = 3500;
+      document.getElementById('profitMargin').value = 30;
+      document.getElementById('marginDisplay').innerText = "30%";
+      document.getElementById('exchangeRate').value = 152.0;
+      document.getElementById('perOrderFeeUsd').value = 0.40;
+      document.getElementById('ebayCategoryFee').value = 13.25;
+      document.getElementById('promotedAdFee').value = 2.0;
+      document.getElementById('intlFee').value = 1.35;
+      document.getElementById('payoneerFee').value = 2.00;
+      document.getElementById('customsDuty').value = 0;
+      document.getElementById('taxRefundToggle').checked = false;
+      document.getElementById('salesTaxCompToggle').checked = true;
+      switchShippingMode('agency');
+    }
+
+    function calculate() {
+      const cost = parseFloat(document.getElementById('costPrice').value) || 0;
+      const targetMarginRate = (parseFloat(document.getElementById('profitMargin').value) || 30) / 100;
+      const shipping = parseFloat(document.getElementById('intlShipping').value) || 0;
+      const extra = parseFloat(document.getElementById('extraFee').value) || 0;
+      const customs = parseFloat(document.getElementById('customsDuty').value) || 0;
+      const fx = parseFloat(document.getElementById('exchangeRate').value) || 152.0;
+      const fixedOrderFeeUsd = parseFloat(document.getElementById('perOrderFeeUsd').value) || 0.40;
+
+      // 消費税還付 (仕入原価に含まれる10%分: cost * 10 / 110)
+      const isTaxRefund = document.getElementById('taxRefundToggle').checked;
+      const taxRefundAmount = isTaxRefund ? (cost * (10 / 110)) : 0;
+
+      // 手数料レート集計
+      const ebayFeeRate = (parseFloat(document.getElementById('ebayCategoryFee').value) || 0) / 100;
+      const promotedFeeRate = (parseFloat(document.getElementById('promotedAdFee').value) || 0) / 100;
+      const intlRate = (parseFloat(document.getElementById('intlFee').value) || 0) / 100;
+      const payoneerRate = (parseFloat(document.getElementById('payoneerFee').value) || 0) / 100;
+
+      // 米国Sales Tax補正: 平均7%のSales Tax分にもeBay落札手数料が加算される影響
+      const isSalesTaxComp = document.getElementById('salesTaxCompToggle').checked;
+      const salesTaxAdditionalFeeRate = isSalesTaxComp ? (0.07 * ebayFeeRate) : 0;
+
+      // 総変動手数料率
+      const totalVariableFeeRate = ebayFeeRate + promotedFeeRate + intlRate + payoneerRate + salesTaxAdditionalFeeRate;
+
+      // 固定原価合計 (円)
+      const fixedOrderFeeJpy = fixedOrderFeeUsd * fx;
+      const totalExpenseJpy = (cost + shipping + extra + customs + fixedOrderFeeJpy) - taxRefundAmount;
+
+      // 売価逆算分母
+      const rateDenominator = 1 - totalVariableFeeRate - targetMarginRate;
+
+      if (rateDenominator <= 0) {
+        document.getElementById('displayUsdPrice').innerText = "設定値過大";
+        return;
+      }
+
+      const rawTargetUsd = totalExpenseJpy / (fx * rateDenominator);
+
+      // .99 端数処理
+      let finalUsd = Math.floor(rawTargetUsd) + 0.99;
+      if (finalUsd < rawTargetUsd) {
+        finalUsd += 1.00;
+      }
+
+      // 損益分岐価格 (目標利益 0%)
+      const breakEvenDenominator = 1 - totalVariableFeeRate;
+      const breakEvenUsd = breakEvenDenominator > 0 ? (totalExpenseJpy / (fx * breakEvenDenominator)) : 0;
+
+      // 実売価ベースの検証再計算
+      const salesJpy = finalUsd * fx;
+      const totalFeesJpy = (salesJpy * totalVariableFeeRate) + fixedOrderFeeJpy;
+      const netProfit = salesJpy - (cost + shipping + extra + customs) - totalFeesJpy + taxRefundAmount;
+      const actualMarginPct = salesJpy > 0 ? (netProfit / salesJpy) * 100 : 0;
+
+      // UI表示反映
+      document.getElementById('displayUsdPrice').innerText = `$${finalUsd.toFixed(2)}`;
+      document.getElementById('displayNetProfit').innerText = `¥${Math.round(netProfit).toLocaleString()}`;
+      document.getElementById('displayActualMargin').innerText = `${actualMarginPct.toFixed(1)}%`;
+
+      document.getElementById('detailCost').innerText = `¥${Math.round(cost + shipping + extra + customs).toLocaleString()}`;
+      document.getElementById('detailFees').innerText = `¥${Math.round(totalFeesJpy).toLocaleString()}`;
+      document.getElementById('breakEvenPrice').innerText = `$${breakEvenUsd.toFixed(2)}`;
+      document.getElementById('salesJpyTotal').innerText = `¥${Math.round(salesJpy).toLocaleString()}`;
+
+      // 還付行の出し入れ
+      const taxRow = document.getElementById('taxRefundRow');
+      if (isTaxRefund) {
+        taxRow.style.display = 'flex';
+        document.getElementById('detailTaxRefund').innerText = `+¥${Math.round(taxRefundAmount).toLocaleString()}`;
+      } else {
+        taxRow.style.display = 'none';
+      }
+    }
+
+    function copyPrice() {
+      const priceText = document.getElementById('displayUsdPrice').innerText.replace('$', '');
+      const textarea = document.createElement('textarea');
+      textarea.value = priceText;
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        showToast();
+      } catch (err) {
+        console.error('Copy failed', err);
+      }
+      document.body.removeChild(textarea);
+    }
+
+    function showToast() {
+      const toast = document.getElementById('toast');
+      toast.classList.remove('opacity-0');
+      toast.classList.add('opacity-100');
+      setTimeout(() => {
+        toast.classList.remove('opacity-100');
+        toast.classList.add('opacity-0');
+      }, 1800);
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      calculate();
+    });
+  </script>
+</body>
+</html>
+
